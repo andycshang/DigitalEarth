@@ -1,0 +1,5 @@
+E:\自学成才\C#学习\ldcsaa-HP-Socket-master\HP-Socket\Windows\Demo\Other Languages Demos\C#\HPSocketCS\bin\x64\Debug\HPSocketCS.dll
+E:\自学成才\C#学习\ldcsaa-HP-Socket-master\HP-Socket\Windows\Demo\Other Languages Demos\C#\HPSocketCS\bin\x64\Debug\HPSocketCS.pdb
+E:\自学成才\C#学习\ldcsaa-HP-Socket-master\HP-Socket\Windows\Demo\Other Languages Demos\C#\HPSocketCS\HPSocketCS\obj\x64\Debug\HPSocketCS.csprojResolveAssemblyReference.cache
+E:\自学成才\C#学习\ldcsaa-HP-Socket-master\HP-Socket\Windows\Demo\Other Languages Demos\C#\HPSocketCS\HPSocketCS\obj\x64\Debug\HPSocketCS.dll
+E:\自学成才\C#学习\ldcsaa-HP-Socket-master\HP-Socket\Windows\Demo\Other Languages Demos\C#\HPSocketCS\HPSocketCS\obj\x64\Debug\HPSocketCS.pdb

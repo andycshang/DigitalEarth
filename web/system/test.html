@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+    <title>一体化</title>
+    <script type="text/javascript" src="./jquery-1.10.2.min.js"></script>
+    <script src="../Build/Cesium/Cesium1.js"></script>
+    <script src="globeRotate.js"></script>
+  <!-- <script src="cesium-sensor-volumes.js"></script> -->
+    <style>
+          @import url(./bucket.css);
+
+#infobox {
+    position: absolute;
+    right: 120px;
+    top: 8px; 
+    z-index: 9999;
+    background: #3D424A;
+    color: #FFFFFF;
+    padding: 4px;
+    border: 1px solid #697179;
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+html,
+body,
+#cesiumContainer {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+}
+    </style>
+</head>
+<body>
+    <div>
+        <h5 style="margin:4px 0px;float: left;">客户端测试</h5>
+        <label style="    margin-left: 50px;">服务器IP：</label>
+        <input type="text" id="txtIP" value="127.0.0.1" style="width: 100px;margin-right: 10px;" />
+        <label>服务器端口 ：</label>
+        <input type="text" id="txtPort" value="12345" style="width: 100px;margin-right: 10px;" />
+        
+        <label id="lbState" style="color: #f00;">连接状态：未连接</label>
+        <button id="connect" onclick="Connect();">连接服务器</button>
+        <button id="close" onclick="Close();">关闭连接</button>
+		<div id="message" style="float: left;border:solid 1px #333; padding:4px; width:50%; overflow:auto;
+		background-color:#404040; height:50%;  font-size:15px;color: green;">
+	</div>
+		
+
+    <div id="cesiumContainer" class="fullSize">
+        <div id="infobox">点击任意卫星</div>
+    </div>
+    <div id="credit"></div>
+    <div id="loadingOverlay">
+        <h1>Loading...</h1>
+    </div>
+
+    <script>
+            var socket = null;
+			var userType = '1';
+			var userID = '1';
+			var userName = '测试用户1';
+			var userList=[];//用户列表
+			var bAuto=false;//自动重新连接服务器
+			var bAutoState=false;//自动重新连接服务器状态
+			var ip='';
+			var port=0;
+			$(function  () {				
+				userID=randomFrom(1,1000000000);		
+				$('#txtID').val(userID);
+				$('#txtName').val('测试'+userID);
+                // AutoConnect();
+			});
+			
+			//获取随机数做为ID
+			function randomFrom(lowerValue,upperValue)
+			{
+			    return Math.floor(Math.random() * (upperValue - lowerValue + 1) + lowerValue);
+			}
+            //连接
+            function Connect() {
+				ip=$('#txtIP').val();
+				 port=$('#txtPort').val();
+				var txtType= $('#txtType').val();
+			 	// var txtID = $('#txtID').val();
+				// var txtName = $('#txtName').val();
+				var txtID = "1";
+				var txtName = "AMING";
+				 if(txtType==''){
+				 	addMsg('fromError','用户类型不能为空！');
+				 	return false;
+				 }
+				  if(txtID==''){
+				 	addMsg('fromError','用户ID不能为空！');
+				 	return false;
+				 }
+				   if(txtName==''){
+				 	addMsg('fromError','用户名称不能为空！');
+				 	return false;
+				 }
+				    userType = txtType;
+			    userID = txtID;
+			    userName = txtName;
+				if(getSocketState()!=0&&getSocketState()!=3){
+					addMsg('error', '当前的状态，不能连接');
+					return false;
+				}
+				//关闭
+				if(socket!=null) {
+					try {
+						socket.close(); //关闭
+						socket=null;
+					} catch(e) {
+
+					}
+				}
+				try {
+					socket = new WebSocket('ws://'+ip+':'+port);
+				} catch(e) {
+					addMsg('connectionFailed',e.message);
+					socket = null;
+					return;
+				}
+				if(socket == null) {
+					addMsg('connectionFailed','连接失败！');
+					return;
+				}
+				
+				if(getSocketState() != 1&&getSocketState() != 0) {
+					addMsg('connectionFailed','连接不成功！');
+					return;
+				}
+
+				socket.onopen = sOpen; //连接建立时触发
+				socket.onerror = sError; //通信发生错误时触发
+				socket.onmessage = receiveMessage; //客户端接收服务端数据时触发
+				socket.onclose = sClose; //连接关闭时触发
+				getSocketState();
+			}
+			
+			//获取状态
+			function getSocketState() {
+				//			0 - 表示连接尚未建立。
+				//			1 - 表示连接已建立，可以进行通信。
+				//			2 - 表示连接正在进行关闭。
+				//			3 - 表示连接已经关闭或者连接不能打开。
+				var s=0;
+				if(socket == null){
+					s=0;
+				}
+				else{
+					s=socket.readyState;
+				}
+
+				if(s==0){
+					$('#userTable tbody').html('');
+					$('#lbState').text('连接状态：未连接!');
+				}
+				else if(s==1){
+					$('#lbState').text('连接状态：连接成功!');
+				}
+				else if(s==2){
+					$('#userTable tbody').html('');
+					$('#lbState').text('连接状态：正在关闭!');
+				}
+				else if(s==3){
+					$('#userTable tbody').html('');
+					$('#lbState').text('连接状态：连接关闭!');
+				}
+				return s;
+			}
+
+			//连接成功
+			function sOpen() { 
+				bAutoState=false;
+				getSocketState();
+				addMsg('onopen', '连接成功！');
+				var txt = getMsgData(1, {
+					txt: '我上线了'
+				});
+				txt = JSON.stringify(txt);
+				send(txt);
+				
+			}
+			//发生异常
+			function sError(e) { 
+				console.log(e);
+				var state= getSocketState();//
+				addMsg('onerror', '当前状态：' + state);
+				if(state == 0&&socket!=null) {
+					try {
+						socket.close(); //关闭
+						socket=null;
+					} catch(e) {
+
+					}
+				}
+				if(bAutoState == false && bAuto && state == 0) {//自动重新连接服务器
+				AutoConnect ();				
+				}				
+			}
+			//自动重新连接服务器
+			function AutoConnect () {
+				bAutoState=true;
+				Connect();
+				addMsg('AutoConnect','自动重新连接服务器');
+				if(getSocketState()!=1){
+					setTimeout(function  () {
+						if(getSocketState()!=1){
+							AutoConnect();
+						}				
+			      },5*1000);
+				}				
+			}
+// 接收消息
+function receiveMessage(messageEvent) {
+debugger
+    try {
+        var data =JSON.parse(messageEvent.data) ; // 来自服务器的数据
+        var origin = messageEvent.origin; // 服务器的地址ַ
+        console.log(data);
+        console.log(data.length);
+
+        // 使用 JSON.parse 来检查 data 是否为有效的 JSON 字符串
+        // try {
+        //     JSON.parse(data);
+        // } catch (jsonError) {
+        //     console.error('Invalid JSON data:', data);
+        //     return false;
+        // }
+
+        var ob = JSON.parse(data);
+        if (ob == null || ob.msgType == null || ob.msgType === '') {
+            return false;
+        }
+
+        // 你到时候接受这个就行
+        console.log(ob);
+
+        switch (ob.msgType.toString()) {
+            case '1': // 客户端上线
+                // 不需要处理
+                break;
+            case '2': // 客户端下线
+                // 不需要处理
+                break;
+            case '3': // 客户端发送普通文本给服务器
+                // 不需要处理
+                break;
+            case '4': // 客户端发送普通文本给其他的客户端
+                // 需要处理
+                ob.data = JSON.parse(ob.data);
+                AppointSendUserTxt(ob.data);
+                break;
+            case '5': // 服务器关闭，通知客户端
+                addMsg('serviceClose', '服务器关闭，通知客户端！');
+                break;
+            case '6': // 服务器推送普通文本消息给客户端
+                ob.data = JSON.parse(ob.data);
+                addMsg('servicePushTxt', ob.data.txt);
+                console.debug("服务器推送过来的数据：" + ob.data);
+                updateCZML(ob.data.txt); // 在这里添加处理 CZML 数据的逻辑
+                break;
+            case '7': // 客户端告诉服务器，发布的商品。可以对该商品进行处理
+                // 不需要处理
+                break;
+            case '8': // 服务器发送普通文本给客户端
+                ob.data = JSON.parse(ob.data);
+                console.debug("服务器推送过来的数据：" + ob.data);
+                addMsg('serviceSendTxt', ob.data.txt);
+                break;
+            case '9': // 服务器推送在线的用户列表给客户端
+                ob.data = JSON.parse(ob.data);
+                ReceivingUserList(ob.data);
+                break;
+            case '10': // 强制客户端下线
+                ob.data = JSON.parse(ob.data);
+                CompulsoryDownline(ob.data);
+                break;
+            case '11': // 服务器推送商品消息给客户端
+                ob.data = JSON.parse(ob.data);
+                AppointSendUserCommodity(ob.data);
+                break;
+            default:
+                break;
+        }
+    } catch (e) {
+        addMsg('error', '接收消息发生异常:' + e.message);
+    }
+}
+
+// 更新 CZML 数据的方法
+function updateCZML(czmlTxt) {
+    // 使用 Cesium.CzmlDataSource 加载 CZML 数据
+    var czmlDataSource = new Cesium.CzmlDataSource();
+    viewer.dataSources.add(czmlDataSource);
+
+    try {
+        var czmlData = JSON.parse(czmlTxt);
+        czmlDataSource.load(czmlData);
+    } catch (czmlError) {
+        console.error('Error loading CZML:', czmlError);
+    }
+}
+
+            function sClose(e) { //服务器关闭
+				var state= getSocketState();
+				addMsg('close', '关闭连接！');
+				$('#userTable tbody').html('');
+				if(socket!=null) {
+					try {
+						socket.close(); //关闭
+						socket=null;
+					} catch(e) {
+
+					}
+				}
+				if(bAutoState==false&&bAuto){
+				//自动重新连接服务器
+				AutoConnect ();				
+				}	
+			}
+
+			//发送普通内容给服务器 
+			function SendTXT(txt) {
+				if(getSocketState() != 1)
+					return;
+
+				try {
+					txt = getMsgData(3, {txt:txt}); //封装
+					txt = JSON.stringify(txt);
+					send(txt);
+				} catch(e) {
+					addMsg('error', '发送普通内容给服务器发生异常:' + e.message);
+				}
+
+			}
+			//发送内容给服务器
+			function send(txt) {
+				try{
+					if(getSocketState()!=1){
+						addMsg('error','当前状态不可发送消息给服务器！')
+						return;
+					}
+					socket.send(txt);
+					return true;
+				}catch(e){
+					addMsg('sendError',e.message)
+				}
+				return false;
+			}
+			//关闭连接服务器
+			function Close() { 
+			    bAuto=false;//自动重新连接服务器
+			    bAutoState=false;//自动重新连接服务器状态
+				if(getSocketState()!=1){
+					addMsg('error', '当前的状态，不能关闭连接');
+					return false;
+				}
+				try {
+					socket.close();
+				} catch(e) {
+					addMsg('error', '关闭连接服务器发生异常:' + e.message);
+				}
+				getSocketState();
+			}
+			/*       
+			 * 
+			 * type=消息类型
+			 * data=消息内容
+			 * 
+			 * */
+			function getMsgData(type, data) {
+				var json = {
+					myUser: {
+						type: userType,
+						id: userID,
+						name: userName
+					},
+					msgType: type,
+					data: data
+				};
+				return json;
+			}
+			//添加普通消息内容
+			function addMsg(type, txt) {
+				var time=new Date();					
+				var html = '<label class="lbTxt">类型：'+type+',时间：'+'<br/>  ' + txt + '</label>';
+				$('#message').append(html);
+			
+				$('#message').scrollTop($("#message")[0].scrollHeight);
+			}
+			
+			//接收服务器推送的用户列表
+			function ReceivingUserList (list) {
+				if(list==null||list.length<=0){
+					if(userList!=null&&userList.length>0){
+						userList=[];
+					}
+				}
+				else{
+					if(userList.length<=0){
+						userList=list;
+					}
+					else{
+						userList=list;
+					}
+				}
+				//添加用户到table里面
+				$('#userTable tbody').html('');
+				var html='';
+				for (var i=0;i<userList.length;i++) {
+					var user=userList[i];
+					if(user.id==userID&&user.type==userType){
+						continue;
+					}
+					html='<tr class="" onclick="selectUser(this)">';
+					html+='<td>'+user.id+'</td>';
+					html+='<td>'+user.type+'</td>';
+					html+='<td>'+user.name+'</td>';
+					html+='<td>'+user.strTime+'</td>';					
+					html+='</tr>';
+					$('#userTable tbody').append(html);
+				}
+				
+			}
+			//是要那个吗
+			//选择用户
+			function selectUser(t) {
+				$('#userTable tbody tr').removeClass('selectTr');
+				$(t).addClass('selectTr');
+			}
+			
+			//发送文本内容给服务器
+			function SendServiceTxt() {
+				var txt=$('#txtServiceTxt').val().trim();
+				if(txt==''){
+					return;
+				}
+				SendTXT(txt);
+			}
+			//告诉服务器发布的商品
+			function SendCommodity() {
+				var txtTitle=$('#txtTitle').val().trim();
+				if(txtTitle==''){
+					return;
+				}
+				var Commodity={
+					toUser:null,
+					AppointType:'1',
+					commodityID:'01',
+					title:txtTitle,
+					many:10.00,
+					describe:'',
+					address:'测试地址',
+					latitude:116,
+					longitude:23.333,
+					time:moment().format('YYYY/MM/DD HH:mm:ss'),
+					remarks:'测试'
+				};
+				
+				try {
+					var txt=getMsgData(7,Commodity);
+					txt = JSON.stringify(txt);
+					send(txt);
+				} catch(e) {
+					addMsg('error', '告诉服务器发布的商品发生异常:' + e.message);
+				}
+			}
+			//发送文本内容给选择的用户
+			function SendUserTxt() {
+				var tr=$('#userTable tbody tr.selectTr');
+				if(tr==null||tr.length<=0){
+					addMsg('error','请选择用户！')
+					return false;
+				}
+				if(tr.length>1){
+					addMsg('error','只能选择一个用户！')
+					return false;
+				}
+				var txtUserTxt=$('#txtUserTxt').val().trim();
+				if(txtUserTxt==''){
+					return;
+				}
+				var toUser={
+					id:$(tr[0]).find('td:nth-child(1)').text(),
+					type:$(tr[0]).find('td:nth-child(2)').text(),
+					name:$(tr[0]).find('td:nth-child(3)').text()
+				};
+				
+				var fromUser={
+					id:userID,
+					type:userType,
+					name:userName,
+					
+				};
+				var data={
+					fromUser:fromUser,
+					toUser:toUser,
+					txt:txtUserTxt,
+					strTime:moment().format('YYYY-MM-DD HH:mm:ss')
+				};
+				try {
+					var txt=getMsgData(4,data);
+					txt = JSON.stringify(txt);
+					send(txt);
+					addMsg('SendUserTxt','发送给用户：'+toUser.name+' 内容：'+txtUserTxt);
+				} catch(e) {
+					addMsg('error', '发送文本内容给选择的用户发生异常:' + e.message);
+				}
+			}
+			//处理强制下线
+			function CompulsoryDownline (data) {
+				addMsg('CompulsoryDownline','强制下线:'+data.type+':'+data.txt);
+				getSocketState();
+			}
+			
+			//接收文本消息
+			function AppointSendUserTxt (data) {
+				if(data==null||data==''){
+					return false;
+				}
+				var fromUser=data.id;
+				var toUser=data.name;
+				var txt=data.name;
+				var strTime=data.time;
+				addMsg('AppointSendUserTxt','发送时间'+strTime+' 来自用户：'+name+' 内容：'+txt);
+			}
+			
+		//接收商品推送
+		function AppointSendUserCommodity(data) {
+			if(data == null || data == '') {
+				return false;
+			}
+			var fromUser = data.fromUser;
+			var commodityID = data.commodityID;
+			var AppointType = data.AppointType;
+			var title = data.title;
+			var many = data.many;
+			var describe = data.describe;
+			var address = data.address;
+			var latitude = data.latitude;
+			var longitude = data.longitude;
+			var time = data.time;
+			var remarks = data.remarks;
+			if(AppointType=='1'){//客户发起的
+					addMsg('AppointSendUserCommodity', '发布时间' + time + ' 来自用户：' + fromUser.name + ' 商品标题：' + title+' 价格：'+many+' 地址：'+address);
+			}
+		    else if(AppointType=='2'){//服务器推送的
+		   			addMsg('AppointSendUserCommodity', '发布时间' + time + ' 来自服务器 商品标题：' + title+' 价格：'+many+' 地址：'+address);
+		    }
+		}
+
+var testArr = [];
+var testIndex = 0;
+var maxIndex = 256;
+
+        var viewer = new Cesium.Viewer('cesiumContainer', {
+            imageryProvider: new Cesium.SingleTileImageryProvider({
+                url: '../img/worldimage.jpg'
+            }),
+            geocoder: false,
+            homeButton: true,
+            sceneModePicker: true,
+            baseLayerPicker: true,
+            navigationHelpButton: false,
+            animation: true,
+            creditContainer: "credit",
+            timeline: false,
+            fullscreenButton: true,
+            vrButton: false,
+            infoBox: false,
+            shouldAnimate:true
+        });
+
+        // 获取相机对象
+        var camera = viewer.camera;
+        viewer.scene.moon.show = true;
+		viewer.scene.globe.showGroundAtmosphere=false;
+        // 设置初始全球视角
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(-71.25029804913295, -0.6201218848313721, 110684404.78980003),
+            orientation: {
+                heading: Cesium.Math.toRadians(1.526666247102488e-13),
+                pitch: Cesium.Math.toRadians(-89.94385526891627),
+                roll: 0.0
+            },
+            duration: 2  // 飞行时间为2秒
+        });
+
+         // 地球自转
+        let globeRotate = new GlobeRotate(viewer);
+        globeRotate.start();
+        var dataSource;
+
+        var velocityVectorProperty = undefined;
+        const velocityVector = new Cesium.Cartesian3();
+        var selectedEntity = undefined;
+
+        const clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+        clickHandler.setInputAction((click) => {
+            let pickedObject = viewer.scene.pick(click.position);
+            if (Cesium.defined(pickedObject)) {
+                velocityVectorProperty = new Cesium.VelocityVectorProperty(pickedObject.id.position, false);
+                selectedEntity = pickedObject.id;
+            } else {
+                selectedEntity = undefined;
+                document.getElementById("infobox").innerHTML = "点击任意卫星";
+            }
+        }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+        viewer.clock.onTick.addEventListener(function (clock) {
+    if (selectedEntity) {
+        let currentPositionCart3 = selectedEntity.position.getValue(clock.currentTime);
+
+        velocityVectorProperty.getValue(clock.currentTime, velocityVector);
+        let metersPerSecond = Cesium.Cartesian3.magnitude(velocityVector);
+
+        // 在 infobox 中显示卫星的 ID、X、Y、Z 和 Speed
+        let coordinates = {
+            x: currentPositionCart3.x,
+            y: currentPositionCart3.y,
+            z: currentPositionCart3.z
+        };
+
+        document.getElementById("infobox").innerHTML = `ID: ${selectedEntity.id}<br>X: ${coordinates.x.toFixed(3)} | Y: ${coordinates.y.toFixed(3)} | Z: ${coordinates.z.toFixed(3)} | Speed: ${metersPerSecond.toFixed(3)}m/s`;
+    }
+});
+        // //  var dataSourcePromise = Cesium.CzmlDataSource.load('simple.czml');
+        // dataSourcePromise.then(function (loadedDataSource) {
+        //     dataSource = loadedDataSource;
+        //     viewer.dataSources.add(dataSource);
+        // });
+    </script>
+</body>
+</html>

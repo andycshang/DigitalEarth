@@ -1,0 +1,5 @@
+F:\淘宝资源\WebSocket聊天\WebSocket\服务器端\WebSocketServer\obj\Debug\WebSocketServer.csprojAssemblyReference.cache
+F:\淘宝资源\WebSocket聊天\WebSocket\服务器端\WebSocketServer\obj\Debug\WebSocketServer.Form1.resources
+F:\淘宝资源\WebSocket聊天\WebSocket\服务器端\WebSocketServer\obj\Debug\WebSocketServer.Properties.Resources.resources
+F:\淘宝资源\WebSocket聊天\WebSocket\服务器端\WebSocketServer\obj\Debug\WebSocketServer.csproj.GenerateResource.cache
+F:\淘宝资源\WebSocket聊天\WebSocket\服务器端\WebSocketServer\obj\Debug\WebSocketServer.csproj.CoreCompileInputs.cache
